@@ -1,693 +1,537 @@
-import React, { useState, useMemo, useRef } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import Tesseract from 'tesseract.js';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const SUBJECTS = ['감리 및 사업관리', '소프트웨어 공학', '데이터베이스', '시스템 구조', '보안'];
-
-const HISTORY_KEY = 'quiz_converter_history';
-const HISTORY_LIMIT = 50;
-
-function loadHistory() {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveHistory(list) {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_LIMIT)));
-  } catch {}
-}
-
-function formatBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function formatTime(ts) {
-  const d = new Date(ts);
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// 페이지 한 장을 캔버스로 렌더한 뒤 OCR
-async function ocrPage(page, lang, scale = 2) {
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  const ctx = canvas.getContext('2d');
-  await page.render({ canvasContext: ctx, viewport }).promise;
-  const { data } = await Tesseract.recognize(canvas, lang);
-  return data.text || '';
-}
-
-function pageItemsToLines(items) {
-  const arr = items
-    .filter(it => it.str !== undefined)
-    .map(it => ({
-      str: it.str,
-      x: it.transform[4],
-      y: Math.round(it.transform[5]),
-    }))
-    .sort((a, b) => b.y - a.y || a.x - b.x);
-
-  const lines = [];
-  let curY = null;
-  let curLine = [];
-  for (const it of arr) {
-    if (curY === null || Math.abs(it.y - curY) <= 2) {
-      curLine.push(it);
-      curY = curY ?? it.y;
-    } else {
-      lines.push(curLine.map(s => s.str).join(' ').replace(/\s+/g, ' ').trim());
-      curLine = [it];
-      curY = it.y;
-    }
-  }
-  if (curLine.length) lines.push(curLine.map(s => s.str).join(' ').replace(/\s+/g, ' ').trim());
-  return lines.filter(Boolean).join('\n');
-}
-
-async function extractPdfText(file, opts) {
-  const { mode = 'auto', lang = 'kor+eng', onProgress } = opts || {};
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const pages = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-
-    if (mode === 'text') {
-      onProgress?.({ page: i, total: pdf.numPages, stage: '텍스트 추출' });
-      const content = await page.getTextContent();
-      pages.push(pageItemsToLines(content.items));
-      continue;
-    }
-
-    if (mode === 'ocr') {
-      onProgress?.({ page: i, total: pdf.numPages, stage: 'OCR' });
-      pages.push(await ocrPage(page, lang));
-      continue;
-    }
-
-    // auto: 텍스트 우선, 텍스트가 거의 없으면 OCR로 폴백
-    onProgress?.({ page: i, total: pdf.numPages, stage: '텍스트 추출' });
-    const content = await page.getTextContent();
-    const textOut = pageItemsToLines(content.items);
-    if (textOut.replace(/\s/g, '').length < 30) {
-      onProgress?.({ page: i, total: pdf.numPages, stage: 'OCR 폴백' });
-      const ocrOut = await ocrPage(page, lang);
-      pages.push(ocrOut);
-    } else {
-      pages.push(textOut);
-    }
-  }
-  return pages.join('\n\n');
-}
-
-const SAMPLE = `1. 정보시스템 장애 대응과 관련하여 가장 적절하지 않은 것은?
-① 정보시스템의 장애 예방·대응계획 수립
-② 관계기관에 장애사실의 즉시 통보
-③ 사업자에게 외부 전문가 활용 체계 구성을 요구
-④ 장애등급 조정 및 원격 백업
-정답: 4
-
-2. 「소프트웨어진흥법」에 따른 설명으로 가장 적절하지 않은 것은?
-1) 상세 요구사항을 작성하기 위해 분리 발주 가능
-2) 민간 자본·기술 활용 사업 추진 가능
-3) 디지털서비스 심사위원회 선정 서비스는 수의계약 가능
-4) 공개 SW는 직접 구매 방식 적용
-정답: 4
-`;
-
-// 다양한 보기 마커 정규화
-const OPTION_MARKERS = [
-  /^[①②③④⑤]\s*/,
-  /^[➀➁➂➃➄]\s*/,
-  /^[1-5][.)]\s*/,
-  /^\([1-5]\)\s*/,
-  /^[가나다라마][.)]\s*/,
-  /^[ABCDE][.)]\s*/i,
-];
-
-const CIRCLED_TO_NUM = { '①': 1, '②': 2, '③': 3, '④': 4, '⑤': 5, '➀': 1, '➁': 2, '➂': 3, '➃': 4, '➄': 5 };
-
-function detectOptionNumber(line) {
-  const m = line.match(/^([①②③④⑤➀➁➂➃➄])/);
-  if (m) return CIRCLED_TO_NUM[m[1]];
-  const n = line.match(/^\(?([1-5])[.)\s]/);
-  if (n) return parseInt(n[1], 10);
-  const k = line.match(/^([가나다라마])[.)\s]/);
-  if (k) return '가나다라마'.indexOf(k[1]) + 1;
-  return null;
-}
-
-function stripMarker(line) {
-  for (const re of OPTION_MARKERS) {
-    if (re.test(line)) return line.replace(re, '').trim();
-  }
-  return line.trim();
-}
-
-function parseAnswer(line) {
-  const m = line.match(/정답\s*[:：]?\s*([①②③④⑤➀➁➂➃➄]|\(?[1-5]\)?|[가나다라마])/);
-  if (!m) return null;
-  const tok = m[1];
-  if (CIRCLED_TO_NUM[tok]) return CIRCLED_TO_NUM[tok];
-  const n = tok.match(/[1-5]/);
-  if (n) return parseInt(n[0], 10);
-  if ('가나다라마'.includes(tok)) return '가나다라마'.indexOf(tok) + 1;
-  return null;
-}
-
-function parseQuestionStart(line) {
-  // "1.", "1)", "문제 1.", "Q1.", "[1]"
-  const m = line.match(/^(?:문제\s*|Q)?\[?(\d+)[.)\]]\s*(.*)$/i);
-  if (!m) return null;
-  return { id: parseInt(m[1], 10), rest: m[2].trim() };
-}
-
-function parseText(text, defaultSubject) {
-  const lines = text.split(/\r?\n/);
-  const questions = [];
-  const errors = [];
-  let cur = null;
-  let curSubject = defaultSubject;
-
-  const flush = () => {
-    if (!cur) return;
-    if (cur.options.length < 2) {
-      errors.push(`Q${cur.id}: 보기가 ${cur.options.length}개뿐입니다`);
-    }
-    if (!cur.answer) {
-      errors.push(`Q${cur.id}: 정답을 찾지 못했습니다`);
-    }
-    questions.push(cur);
-    cur = null;
-  };
-
-  for (let raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-
-    // 과목 헤더: "[감리 및 사업관리]" 또는 "## 보안"
-    const subjMatch = line.match(/^[\[#=]+\s*([가-힣 ]+?)\s*[\]#=]*$/);
-    if (subjMatch && SUBJECTS.includes(subjMatch[1].trim())) {
-      flush();
-      curSubject = subjMatch[1].trim();
-      continue;
-    }
-
-    // 정답 라인
-    const ans = parseAnswer(line);
-    if (ans && cur) {
-      cur.answer = ans;
-      flush();
-      continue;
-    }
-
-    // 보기 라인
-    const optNum = detectOptionNumber(line);
-    if (optNum && cur && cur.options.length === optNum - 1) {
-      cur.options.push(stripMarker(line));
-      continue;
-    }
-
-    // 새 문제 시작
-    const qStart = parseQuestionStart(line);
-    if (qStart) {
-      flush();
-      cur = {
-        id: qStart.id,
-        subject: curSubject,
-        question: qStart.rest,
-        options: [],
-        answer: null,
-      };
-      continue;
-    }
-
-    // 진행 중인 문제 본문에 이어쓰기
-    if (cur) {
-      if (cur.options.length === 0) {
-        cur.question = cur.question ? cur.question + '\n' + line : line;
-      } else {
-        // 마지막 보기에 이어쓰기
-        cur.options[cur.options.length - 1] += ' ' + line;
-      }
-    }
-  }
-  flush();
-
-  return { questions, errors };
-}
 
 function escapeJsString(s) {
   return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
 }
 
 function toJsModule(year, questions) {
-  const body = questions.map(q => {
-    const opts = q.options.map(o => `      '${escapeJsString(o)}'`).join(',\n');
+  const sorted = [...questions].sort((a, b) => a.id - b.id);
+  const body = sorted.map(q => {
+    const expl = q.explanation
+      ? `,\n    explanation: '${escapeJsString(q.explanation)}'`
+      : '';
+    const explImg = q.explanationImage
+      ? `,\n    explanationImage: "${q.explanationImage}"`
+      : '';
     return `  {
     id: ${q.id},
     subject: "${q.subject}",
-    question: '${escapeJsString(q.question)}',
-    options: [
-${opts}
-    ],
-    answer: ${q.answer ?? 'null'}
+    image: "${q.image}",
+    answer: ${q.answer ?? 'null'}${expl}${explImg}
   }`;
   }).join(',\n');
-  return `// ${year}년 정보시스템감리사 기출문제\nexport default [\n${body}\n];\n`;
+  return `// ${year}년 기출문제\nexport default [\n${body}\n];\n`;
 }
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+const LAST_YEAR_KEY = 'converter_last_year';
 
 export default function Converter() {
-  const [year, setYear] = useState(new Date().getFullYear() - 1 + '');
-  const [defaultSubject, setDefaultSubject] = useState(SUBJECTS[0]);
-  const [text, setText] = useState('');
-  const [pdfStatus, setPdfStatus] = useState('');
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdfMode, setPdfMode] = useState('auto');
-  const [ocrLang, setOcrLang] = useState('kor+eng');
-  const fileInputRef = useRef(null);
+  const [year, setYear] = useState(() => {
+    return localStorage.getItem(LAST_YEAR_KEY) || new Date().getFullYear() + '';
+  });
+  const [questions, setQuestions] = useState([]); // { id, subject, image, answer, explanation }
+  const [savedFiles, setSavedFiles] = useState([]);
 
-  // 변환 결과 (버튼을 눌러야 채워짐)
-  const [result, setResult] = useState(null); // { questions, errors, year }
+  // 입력 폼 상태
+  const [editingId, setEditingId] = useState(1);
+  const [subject, setSubject] = useState(SUBJECTS[0]);
+  const [answer, setAnswer] = useState(null);
+  const [explanation, setExplanation] = useState('');
+  const [imagePreview, setImagePreview] = useState(''); // data URL or saved URL
+  const [imageDirty, setImageDirty] = useState(false);  // true: 새로 받은 dataURL → 저장 필요
+  const [explImagePreview, setExplImagePreview] = useState('');
+  const [explImageDirty, setExplImageDirty] = useState(false);
+  const [status, setStatus] = useState('');
 
-  // 업로드 이력
-  const [history, setHistory] = useState(loadHistory());
-  const lastFileRef = useRef(null); // 직전 업로드 PDF의 메타
+  const formRef = useRef(null);
+  const didAutoLoadRef = useRef(false);
+  const explAreaRef = useRef(null);
+  const explTextRef = useRef(null);
 
-  const addHistory = (entry) => {
-    setHistory(prev => {
-      const next = [{ ...entry, ts: Date.now() }, ...prev].slice(0, HISTORY_LIMIT);
-      saveHistory(next);
-      return next;
-    });
-  };
+  // 연도 변경 시 localStorage에 저장
+  useEffect(() => {
+    if (year) localStorage.setItem(LAST_YEAR_KEY, year);
+  }, [year]);
 
-  const handlePdf = async (file) => {
-    if (!file) return;
-    setPdfBusy(true);
-    setResult(null);
-    setPdfStatus(`"${file.name}" 읽는 중... (OCR 사용 시 첫 실행은 언어 데이터 다운로드로 1~2분 소요)`);
-    const startedAt = Date.now();
+  // 저장된 연도 목록
+  const refreshFiles = useCallback(async () => {
     try {
-      const extracted = await extractPdfText(file, {
-        mode: pdfMode,
-        lang: ocrLang,
-        onProgress: ({ page, total, stage }) => {
-          setPdfStatus(`"${file.name}" — ${stage} ${page}/${total}`);
-        },
-      });
-      setText(extracted);
-      setPdfStatus(`"${file.name}" 추출 완료 (${extracted.length.toLocaleString()}자). "변환" 버튼을 눌러 검수하세요.`);
-      const yearMatch = file.name.match(/(20\d{2})/);
-      const inferredYear = yearMatch ? yearMatch[1] : year;
-      if (yearMatch) setYear(yearMatch[1]);
+      const res = await fetch('/__list-data');
+      const data = await res.json();
+      setSavedFiles(data.files || []);
+      return data.files || [];
+    } catch { return []; }
+  }, []);
 
-      lastFileRef.current = {
-        name: file.name,
-        size: file.size,
-        mode: pdfMode,
-        lang: ocrLang,
-        year: inferredYear,
-        chars: extracted.length,
-        elapsedMs: Date.now() - startedAt,
-      };
-      addHistory({
-        type: 'upload',
-        ...lastFileRef.current,
-      });
-    } catch (err) {
-      setPdfStatus(`PDF 처리 실패: ${err.message}`);
-      addHistory({
-        type: 'upload-failed',
-        name: file.name,
-        size: file.size,
-        mode: pdfMode,
-        error: err.message,
-      });
-    } finally {
-      setPdfBusy(false);
-    }
-  };
+  // 첫 마운트 시: 파일 목록 가져오고, 작업 중이던 연도(또는 가장 최근 연도) 자동 로드
+  useEffect(() => {
+    if (didAutoLoadRef.current) return;
+    didAutoLoadRef.current = true;
+    (async () => {
+      const files = await refreshFiles();
+      if (files.length === 0) return;
+      const preferredFile = `${year}.js`;
+      const targetFile = files.includes(preferredFile)
+        ? preferredFile
+        : files[files.length - 1]; // 정렬된 목록에서 가장 최근(큰) 연도
+      await loadYear(targetFile, /*silent*/ true);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const onDrop = (e) => {
-    e.preventDefault();
-    if (pdfBusy) return;
-    const file = e.dataTransfer.files?.[0];
-    if (file && file.type === 'application/pdf') handlePdf(file);
-    else setPdfStatus('PDF 파일만 가능합니다');
-  };
+  // 클립보드 붙여넣기 (전역) - 포커스 위치에 따라 문제/해설 이미지로 라우팅
+  useEffect(() => {
+    const onPaste = async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.type?.startsWith('image/')) {
+          const file = it.getAsFile();
+          if (!file) continue;
+          const dataUrl = await fileToDataUrl(file);
+          // 포커스가 해설 영역(이미지 박스 또는 textarea) 안이면 해설 이미지로
+          const active = document.activeElement;
+          const intoExpl = explAreaRef.current?.contains(active) || explTextRef.current === active;
+          if (intoExpl) {
+            setExplImagePreview(dataUrl);
+            setExplImageDirty(true);
+            setStatus('해설 이미지 붙여넣음.');
+          } else {
+            setImagePreview(dataUrl);
+            setImageDirty(true);
+            setStatus('문제 이미지 붙여넣음. 정답·과목 선택 후 저장하세요.');
+          }
+          e.preventDefault();
+          return;
+        }
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
 
-  const runConvert = () => {
-    if (!text.trim()) {
-      alert('변환할 텍스트가 없습니다');
+  // 파일 선택 (kind: 'question' | 'explanation')
+  const handleFile = async (file, kind = 'question') => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setStatus('이미지 파일만 가능합니다');
       return;
     }
-    const r = parseText(text, defaultSubject);
-    setResult({ ...r, year });
-    addHistory({
-      type: 'convert',
-      year,
-      defaultSubject,
-      questionCount: r.questions.length,
-      errorCount: r.errors.length,
-      sourceName: lastFileRef.current?.name || '(직접 입력)',
-    });
+    const dataUrl = await fileToDataUrl(file);
+    if (kind === 'explanation') {
+      setExplImagePreview(dataUrl);
+      setExplImageDirty(true);
+      setStatus('해설 이미지 선택됨');
+    } else {
+      setImagePreview(dataUrl);
+      setImageDirty(true);
+      setStatus('문제 이미지 선택됨');
+    }
   };
 
-  const clearHistory = () => {
-    if (!confirm('이력을 모두 삭제하시겠습니까?')) return;
-    setHistory([]);
-    saveHistory([]);
+  const onDrop = async (e, kind = 'question') => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    handleFile(file, kind);
   };
 
-  const questions = result?.questions ?? [];
-  const errors = result?.errors ?? [];
-  const jsOutput = useMemo(
-    () => questions.length ? toJsModule(result?.year ?? year, questions) : '',
-    [result, year, questions]
-  );
-
-  const download = () => {
-    const blob = new Blob([jsOutput], { type: 'text/javascript;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${year}.js`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const resetForm = (nextId) => {
+    setEditingId(nextId);
+    setAnswer(null);
+    setExplanation('');
+    setImagePreview('');
+    setImageDirty(false);
+    setExplImagePreview('');
+    setExplImageDirty(false);
   };
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(jsOutput);
-    alert('클립보드에 복사되었습니다');
+  // 입력값 검증
+  const canSave = imagePreview && answer && /^\d{4}$/.test(year);
+
+  // 저장 + 다음 문제로 / 또는 저장만
+  const saveQuestion = async (advance = false) => {
+    if (!canSave) {
+      alert('이미지·정답·연도를 모두 입력하세요');
+      return;
+    }
+    setStatus('저장 중...');
+    try {
+      let imageUrl = imagePreview;
+      if (imageDirty) {
+        const res = await fetch('/__save-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, id: editingId, dataUrl: imagePreview, kind: 'question' }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `image save failed`);
+        imageUrl = d.url;
+      }
+
+      let explImageUrl = explImagePreview;
+      if (explImageDirty && explImagePreview) {
+        const res = await fetch('/__save-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, id: editingId, dataUrl: explImagePreview, kind: 'explanation' }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || `expl image save failed`);
+        explImageUrl = d.url;
+      } else if (!explImagePreview) {
+        // 사용자가 해설 이미지를 비웠으면 서버에서도 삭제
+        explImageUrl = '';
+        await fetch('/__delete-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, id: editingId, kind: 'explanation' }),
+        });
+      }
+
+      const newQ = {
+        id: editingId,
+        subject,
+        image: imageUrl,
+        answer,
+        explanation: explanation.trim() || undefined,
+        explanationImage: explImageUrl || undefined,
+      };
+      const nextList = [...questions.filter(q => q.id !== editingId), newQ];
+      setQuestions(nextList);
+
+      const dataRes = await fetch('/__save-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: `${year}.js`,
+          content: toJsModule(year, nextList),
+        }),
+      });
+      const dd = await dataRes.json();
+      if (!dataRes.ok) throw new Error(dd.error || 'data save failed');
+
+      setStatus(`✅ #${editingId} 저장됨 (${nextList.length}문제)`);
+      if (advance) {
+        const nextId = Math.max(...nextList.map(q => q.id), 0) + 1;
+        resetForm(nextId);
+      } else {
+        setImageDirty(false);
+      }
+      refreshFiles();
+    } catch (err) {
+      setStatus(`저장 실패: ${err.message}`);
+    }
   };
 
-  const subjectStats = useMemo(() => {
-    const m = {};
-    for (const q of questions) m[q.subject] = (m[q.subject] || 0) + 1;
-    return m;
-  }, [questions]);
+  // 기존 파일 불러오기
+  const loadYear = async (filename, silent = false) => {
+    try {
+      const res = await fetch('/__read-data?file=' + encodeURIComponent(filename));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      const blob = new Blob([data.content], { type: 'text/javascript' });
+      const url = URL.createObjectURL(blob);
+      const mod = await import(/* @vite-ignore */ url);
+      URL.revokeObjectURL(url);
+      const list = mod.default || [];
+      const yr = filename.replace('.js', '');
+      setYear(yr);
+      setQuestions(list);
+      const nextId = Math.max(...list.map(q => q.id), 0) + 1;
+      resetForm(nextId);
+      setStatus(`${filename} 자동 불러옴 (${list.length}문제). 다음 입력 #${nextId}`);
+    } catch (err) {
+      if (!silent) alert(`불러오기 실패: ${err.message}`);
+    }
+  };
+
+  const editQuestion = (q) => {
+    setEditingId(q.id);
+    setSubject(q.subject);
+    setAnswer(q.answer);
+    setExplanation(q.explanation || '');
+    setImagePreview(q.image);
+    setImageDirty(false);
+    setExplImagePreview(q.explanationImage || '');
+    setExplImageDirty(false);
+    setStatus(`#${q.id} 편집 모드. 이미지 바꾸려면 새로 붙여넣으세요.`);
+    formRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const deleteQuestion = async (id) => {
+    if (!confirm(`#${id} 문제를 삭제하시겠습니까?`)) return;
+    try {
+      await fetch('/__delete-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, id }),
+      });
+      const nextList = questions.filter(q => q.id !== id);
+      setQuestions(nextList);
+      await fetch('/__save-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: `${year}.js`,
+          content: toJsModule(year, nextList),
+        }),
+      });
+      setStatus(`#${id} 삭제됨`);
+    } catch (err) {
+      alert(`삭제 실패: ${err.message}`);
+    }
+  };
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 1400, margin: '0 auto' }}>
-      <h1>기출문제 변환기</h1>
-      <p style={{ color: '#666' }}>
-        PDF를 업로드하거나 텍스트를 붙여넣으면 <code>src/data/YYYY.js</code> 형식으로 변환합니다.
-        다운로드 후 <code>src/data/</code> 폴더에 넣으면 자동 로드됩니다.
+    <div style={{ padding: 20, fontFamily: 'sans-serif', maxWidth: 1200, margin: '0 auto' }}>
+      <h1>기출문제 입력 (이미지 모드)</h1>
+      <p style={{ color: '#666', fontSize: 14 }}>
+        문제 영역을 캡처하고 (Win+Shift+S) → 아래 박스에 <b>Ctrl+V</b>로 붙여넣기 → 정답·과목 선택 → <b>저장 후 다음 문제</b>.
+        이미지에 보기 4개가 포함되어 있다고 가정하고 정답 1~4 버튼만 사용합니다.
       </p>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 8, fontSize: 13, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontWeight: 'bold' }}>추출 방식:</span>
-        <label><input type="radio" name="pdfMode" value="auto" checked={pdfMode === 'auto'} onChange={() => setPdfMode('auto')} disabled={pdfBusy} /> 자동 (텍스트 우선, 빈 페이지는 OCR)</label>
-        <label><input type="radio" name="pdfMode" value="text" checked={pdfMode === 'text'} onChange={() => setPdfMode('text')} disabled={pdfBusy} /> 텍스트만 (빠름)</label>
-        <label><input type="radio" name="pdfMode" value="ocr" checked={pdfMode === 'ocr'} onChange={() => setPdfMode('ocr')} disabled={pdfBusy} /> OCR 강제 (이미지 스캔용, 느림)</label>
-        <label style={{ marginLeft: 8 }}>
-          OCR 언어{' '}
-          <select value={ocrLang} onChange={e => setOcrLang(e.target.value)} disabled={pdfBusy} style={{ padding: 2 }}>
-            <option value="kor+eng">한국어 + 영어</option>
-            <option value="kor">한국어</option>
-            <option value="eng">영어</option>
-          </select>
-        </label>
+      {/* 저장된 연도 목록 */}
+      <div style={{ marginBottom: 12, padding: 8, background: '#f0f4ff', borderRadius: 4, fontSize: 13 }}>
+        <b>저장된 연도:</b>{' '}
+        {savedFiles.length === 0 && <span style={{ color: '#888' }}>아직 없음</span>}
+        {savedFiles.map(f => (
+          <button key={f} onClick={() => loadYear(f)}
+            style={{ margin: '0 4px', padding: '2px 8px', cursor: 'pointer',
+              background: '#fff', border: '1px solid #aac', borderRadius: 3 }}>
+            📂 {f}
+          </button>
+        ))}
+        <button onClick={refreshFiles} style={{ marginLeft: 8, padding: '2px 6px', fontSize: 11 }}>↻</button>
       </div>
 
-      <div
-        onDrop={onDrop}
-        onDragOver={e => e.preventDefault()}
-        onClick={() => !pdfBusy && fileInputRef.current?.click()}
-        style={{
-          border: '2px dashed #888',
-          borderRadius: 8,
-          padding: 20,
-          textAlign: 'center',
-          marginBottom: 12,
-          cursor: pdfBusy ? 'wait' : 'pointer',
-          background: pdfBusy ? '#fffbe6' : '#fafafa',
-        }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf"
-          style={{ display: 'none' }}
-          onChange={e => handlePdf(e.target.files?.[0])}
-        />
-        <div style={{ fontSize: 16, fontWeight: 'bold' }}>
-          {pdfBusy ? '⏳ ' : '📄 '}
-          PDF 파일을 여기에 드래그하거나 클릭해서 선택
-        </div>
-        {pdfStatus && (
-          <div style={{ marginTop: 6, fontSize: 13, color: pdfStatus.includes('실패') ? '#c00' : '#555' }}>
-            {pdfStatus}
-          </div>
-        )}
-        <div style={{ marginTop: 6, fontSize: 12, color: '#999' }}>
-          파일명에 연도가 있으면 (예: <code>2024_기출.pdf</code>) 자동으로 연도가 채워집니다.
-          OCR 첫 실행 시 언어 데이터를 자동 다운로드합니다 (한국어 ~15MB, 1~2분 소요).
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
-        <label>
-          연도{' '}
-          <input
-            value={year}
-            onChange={e => setYear(e.target.value)}
-            style={{ width: 80, padding: 4 }}
-            placeholder="2024"
-          />
-        </label>
-        <label>
-          기본 과목{' '}
-          <select value={defaultSubject} onChange={e => setDefaultSubject(e.target.value)} style={{ padding: 4 }}>
-            {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </label>
-        <button onClick={() => setText(SAMPLE)}>샘플 입력</button>
-        <button onClick={() => setText('')}>지우기</button>
-      </div>
-
-      <details style={{ marginBottom: 12, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>입력 형식 안내</summary>
-        <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6 }}>
-          <p><b>문제 시작:</b> <code>1.</code> <code>1)</code> <code>문제 1.</code> <code>Q1.</code> <code>[1]</code></p>
-          <p><b>보기:</b> <code>① ② ③ ④</code> 또는 <code>1) 2) 3) 4)</code> 또는 <code>가. 나. 다. 라.</code></p>
-          <p><b>정답:</b> <code>정답: 4</code> 또는 <code>정답: ④</code> 또는 <code>정답: 라</code></p>
-          <p><b>과목 변경:</b> 줄 단독으로 <code>[보안]</code> 또는 <code>## 데이터베이스</code> (5개 과목명과 정확히 일치해야 함)</p>
-          <p><b>줄바꿈:</b> 본문/보기 중간 줄바꿈은 자동 결합됨</p>
-        </div>
-      </details>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      {/* 입력 폼 */}
+      <div ref={formRef} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+        {/* 좌: 이미지 */}
         <div>
-          <div style={{ fontWeight: 'bold', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>입력 (텍스트)</span>
-            <button
-              onClick={runConvert}
-              disabled={pdfBusy || !text.trim()}
-              style={{
-                background: '#2563eb', color: '#fff', border: 'none',
-                padding: '6px 14px', borderRadius: 4, fontWeight: 'bold',
-                cursor: (pdfBusy || !text.trim()) ? 'not-allowed' : 'pointer',
-                opacity: (pdfBusy || !text.trim()) ? 0.5 : 1,
-              }}
-            >
-              ▶ 변환 실행
-            </button>
-            {result && <span style={{ fontSize: 12, color: '#666' }}>(텍스트를 수정하면 다시 눌러주세요)</span>}
-          </div>
-          <textarea
-            value={text}
-            onChange={e => setText(e.target.value)}
-            style={{ width: '100%', height: 500, fontFamily: 'monospace', fontSize: 13, padding: 8 }}
-            placeholder="여기에 기출문제 텍스트를 붙여넣으세요..."
-          />
-        </div>
-        <div>
-          <div style={{ fontWeight: 'bold', marginBottom: 4 }}>
-            출력 ({questions.length}문제)
-            {jsOutput && (
-              <span style={{ marginLeft: 12 }}>
-                <button onClick={download}>다운로드 {result?.year ?? year}.js</button>{' '}
-                <button onClick={copy}>복사</button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            <label>연도{' '}
+              <input value={year} onChange={e => setYear(e.target.value)}
+                style={{ width: 70, padding: 4 }} />
+            </label>
+            <label>문제 #{' '}
+              <input type="number" value={editingId} min={1}
+                onChange={e => setEditingId(parseInt(e.target.value, 10) || 1)}
+                style={{ width: 70, padding: 4 }} />
+            </label>
+            <label style={{ marginLeft: 'auto' }}>
+              <input type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => handleFile(e.target.files?.[0])}
+                id="img-file" />
+              <span onClick={() => document.getElementById('img-file').click()}
+                style={{ cursor: 'pointer', fontSize: 12, color: '#06b' }}>
+                📁 파일 선택
               </span>
+            </label>
+          </div>
+          <div
+            onPaste={() => {}}
+            onDrop={onDrop}
+            onDragOver={e => e.preventDefault()}
+            style={{
+              border: '2px dashed #888', borderRadius: 6, minHeight: 320,
+              background: imagePreview ? '#fff' : '#fafafa',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 8, overflow: 'auto',
+            }}
+          >
+            {imagePreview ? (
+              <img src={imagePreview} alt="문제"
+                style={{ maxWidth: '100%', maxHeight: 600, display: 'block' }} />
+            ) : (
+              <div style={{ color: '#888', textAlign: 'center', fontSize: 14 }}>
+                여기를 클릭한 뒤 <b>Ctrl+V</b>로 캡처 이미지 붙여넣기<br/>
+                또는 이미지 파일 드래그
+              </div>
             )}
           </div>
-          <textarea
-            value={jsOutput}
-            readOnly
-            style={{ width: '100%', height: 500, fontFamily: 'monospace', fontSize: 13, padding: 8, background: '#fafafa' }}
-            placeholder="'변환 실행' 버튼을 누르면 결과가 여기에 표시됩니다"
-          />
+        </div>
+
+        {/* 우: 정답/과목/해설 */}
+        <div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>정답 (필수)</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[1,2,3,4].map(n => (
+                <button key={n} onClick={() => setAnswer(n)}
+                  style={{
+                    flex: 1, padding: '20px 0', fontSize: 28, fontWeight: 'bold',
+                    border: answer === n ? '3px solid #16a34a' : '1px solid #ccc',
+                    background: answer === n ? '#dcfce7' : '#fff',
+                    color: answer === n ? '#15803d' : '#333',
+                    borderRadius: 6, cursor: 'pointer',
+                  }}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 4 }}>과목</div>
+            <select value={subject} onChange={e => setSubject(e.target.value)}
+              style={{ width: '100%', padding: 6, fontSize: 14 }}>
+              {SUBJECTS.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontWeight: 'bold', marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>해설 (선택) — 텍스트와 이미지 모두 가능</span>
+              {(explImagePreview || explImageDirty) && (
+                <button
+                  onClick={() => { setExplImagePreview(''); setExplImageDirty(true); }}
+                  style={{ fontSize: 11, color: '#c00', background: 'none', border: '1px solid #c00', padding: '1px 6px', borderRadius: 3, cursor: 'pointer' }}
+                >
+                  해설 이미지 제거
+                </button>
+              )}
+            </div>
+            <textarea
+              ref={explTextRef}
+              value={explanation} onChange={e => setExplanation(e.target.value)}
+              placeholder="텍스트 해설 (이 칸 클릭 후 Ctrl+V로 붙여넣으면 해설 이미지로 인식)"
+              style={{ width: '100%', minHeight: 80, padding: 6, fontSize: 13, fontFamily: 'inherit' }} />
+            <div
+              ref={explAreaRef}
+              tabIndex={0}
+              onDrop={(e) => onDrop(e, 'explanation')}
+              onDragOver={e => e.preventDefault()}
+              onClick={() => explAreaRef.current?.focus()}
+              style={{
+                marginTop: 4,
+                border: '1px dashed #c8a96a',
+                borderRadius: 4,
+                minHeight: explImagePreview ? 'auto' : 70,
+                padding: 6,
+                background: explImagePreview ? '#fff' : '#fdf9f0',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              {explImagePreview ? (
+                <img src={explImagePreview} alt="해설"
+                  style={{ maxWidth: '100%', maxHeight: 240, display: 'block' }} />
+              ) : (
+                <div style={{ fontSize: 12, color: '#7a6f5f', textAlign: 'center' }}>
+                  📎 여기를 클릭한 뒤 <b>Ctrl+V</b>로 해설 이미지 붙여넣기 (선택)<br/>
+                  또는 이미지 파일 드래그
+                </div>
+              )}
+              <input type="file" accept="image/*" id="expl-img-file" style={{ display: 'none' }}
+                onChange={e => handleFile(e.target.files?.[0], 'explanation')} />
+            </div>
+            <div style={{ marginTop: 2, fontSize: 11, color: '#888', textAlign: 'right' }}>
+              <span onClick={() => document.getElementById('expl-img-file').click()}
+                style={{ cursor: 'pointer', color: '#06b' }}>
+                📁 해설 이미지 파일 선택
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              onClick={() => saveQuestion(true)}
+              disabled={!canSave}
+              style={{
+                flex: 2, padding: '12px', fontSize: 15, fontWeight: 'bold',
+                background: canSave ? '#16a34a' : '#aaa', color: '#fff',
+                border: 'none', borderRadius: 6, cursor: canSave ? 'pointer' : 'not-allowed',
+              }}>
+              💾 저장 후 다음 문제 →
+            </button>
+            <button
+              onClick={() => saveQuestion(false)}
+              disabled={!canSave}
+              style={{
+                flex: 1, padding: '12px', fontSize: 14,
+                background: canSave ? '#2563eb' : '#aaa', color: '#fff',
+                border: 'none', borderRadius: 6, cursor: canSave ? 'pointer' : 'not-allowed',
+              }}>
+              저장만
+            </button>
+          </div>
+
+          {status && (
+            <div style={{
+              marginTop: 8, padding: 8, fontSize: 13, borderRadius: 4,
+              background: status.includes('실패') ? '#fee' : '#f0fdf4',
+              color: status.includes('실패') ? '#900' : '#166534',
+            }}>
+              {status}
+            </div>
+          )}
         </div>
       </div>
 
-      {result && (
-        <ReviewPanel questions={questions} errors={errors} />
-      )}
-
-      <HistoryPanel history={history} onClear={clearHistory} onLoadText={(t, y) => { setText(t); if (y) setYear(y); setResult(null); }} />
-    </div>
-  );
-}
-
-function ReviewPanel({ questions, errors }) {
-  const subjectStats = useMemo(() => {
-    const m = {};
-    for (const q of questions) m[q.subject] = (m[q.subject] || 0) + 1;
-    return m;
-  }, [questions]);
-
-  const errorsByQ = useMemo(() => {
-    const m = new Map();
-    for (const e of errors) {
-      const match = e.match(/Q(\d+)/);
-      if (match) {
-        const id = parseInt(match[1], 10);
-        if (!m.has(id)) m.set(id, []);
-        m.get(id).push(e);
-      }
-    }
-    return m;
-  }, [errors]);
-
-  return (
-    <div style={{ marginTop: 16 }}>
-      <h2 style={{ borderBottom: '2px solid #ccc', paddingBottom: 4 }}>검수 ({questions.length}문제)</h2>
-
-      {Object.keys(subjectStats).length > 0 && (
-        <div style={{ padding: 8, background: '#eef', borderRadius: 4, marginBottom: 8 }}>
-          <b>과목별 분포:</b>{' '}
-          {Object.entries(subjectStats).map(([s, n]) => `${s} ${n}문제`).join(', ')}
+      {/* 저장된 문제 목록 */}
+      <h2 style={{ borderBottom: '2px solid #ccc', paddingBottom: 4 }}>
+        {year}년 입력된 문제 ({questions.length}문제)
+      </h2>
+      {questions.length === 0 ? (
+        <div style={{ padding: 20, color: '#888', textAlign: 'center' }}>
+          아직 저장된 문제가 없습니다. 저장된 연도를 불러오거나 새로 입력하세요.
         </div>
-      )}
-
-      {errors.length > 0 && (
-        <div style={{ padding: 8, background: '#fee', borderRadius: 4, color: '#900', marginBottom: 8 }}>
-          <b>경고 ({errors.length}건):</b>
-          <ul style={{ margin: '4px 0 0 20px' }}>
-            {errors.slice(0, 20).map((e, i) => <li key={i}>{e}</li>)}
-            {errors.length > 20 && <li>... 외 {errors.length - 20}건</li>}
-          </ul>
-        </div>
-      )}
-
-      <div style={{ maxHeight: 600, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 4, padding: 8 }}>
-        {questions.map(q => {
-          const qErrors = errorsByQ.get(q.id) || [];
-          const hasError = qErrors.length > 0;
-          return (
-            <div
-              key={q.id}
-              style={{
-                padding: 10,
-                marginBottom: 8,
-                background: hasError ? '#fff5f5' : '#fff',
-                border: `1px solid ${hasError ? '#fcc' : '#eee'}`,
-                borderRadius: 4,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <b>#{q.id} <span style={{ color: '#666', fontSize: 12 }}>[{q.subject}]</span></b>
-                <span style={{ fontSize: 12, color: '#888' }}>정답: {q.answer ?? '?'}</span>
+      ) : (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginTop: 10
+        }}>
+          {[...questions].sort((a,b) => a.id - b.id).map(q => (
+            <div key={q.id} style={{
+              border: '1px solid #ddd', borderRadius: 4, padding: 6, background: '#fff'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+                <b>#{q.id}</b>
+                <span style={{ color: '#666' }}>{q.subject}</span>
               </div>
-              <div style={{ fontSize: 14, marginBottom: 6, whiteSpace: 'pre-wrap' }}>{q.question}</div>
-              <ol style={{ margin: '0 0 0 20px', padding: 0 }}>
-                {q.options.map((o, i) => (
-                  <li key={i} style={{
-                    fontSize: 13,
-                    color: q.answer === i + 1 ? '#0a7' : '#333',
-                    fontWeight: q.answer === i + 1 ? 'bold' : 'normal',
-                  }}>
-                    {o} {q.answer === i + 1 && '✓'}
-                  </li>
-                ))}
-              </ol>
-              {hasError && (
-                <div style={{ marginTop: 4, fontSize: 12, color: '#c00' }}>
-                  ⚠ {qErrors.join(', ')}
+              <img src={q.image} alt={`Q${q.id}`}
+                style={{ width: '100%', height: 120, objectFit: 'contain', background: '#f5f5f5', cursor: 'pointer' }}
+                onClick={() => editQuestion(q)} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 4 }}>
+                <span>정답: <b style={{ color: '#16a34a' }}>{q.answer}</b></span>
+                <span>
+                  <button onClick={() => editQuestion(q)} style={{ fontSize: 11, marginRight: 4 }}>편집</button>
+                  <button onClick={() => deleteQuestion(q.id)} style={{ fontSize: 11, color: '#c00' }}>삭제</button>
+                </span>
+              </div>
+              {q.explanation && (
+                <div style={{ fontSize: 11, color: '#888', marginTop: 2,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  💬 {q.explanation}
+                </div>
+              )}
+              {q.explanationImage && (
+                <div style={{ fontSize: 11, color: '#c8a96a', marginTop: 2 }}>
+                  🖼 해설 이미지
                 </div>
               )}
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function HistoryPanel({ history, onClear, onLoadText }) {
-  const [open, setOpen] = useState(true);
-
-  return (
-    <div style={{ marginTop: 16 }}>
-      <h2 style={{
-        borderBottom: '2px solid #ccc', paddingBottom: 4,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-      }}>
-        <span style={{ cursor: 'pointer' }} onClick={() => setOpen(o => !o)}>
-          {open ? '▼' : '▶'} 작업 이력 ({history.length})
-        </span>
-        {history.length > 0 && (
-          <button onClick={onClear} style={{ fontSize: 12, padding: '2px 8px' }}>이력 지우기</button>
-        )}
-      </h2>
-
-      {open && (
-        history.length === 0 ? (
-          <div style={{ padding: 12, color: '#888', fontSize: 14 }}>아직 이력이 없습니다.</div>
-        ) : (
-          <div style={{ maxHeight: 400, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                  <th style={{ padding: 6 }}>시각</th>
-                  <th style={{ padding: 6 }}>작업</th>
-                  <th style={{ padding: 6 }}>파일/소스</th>
-                  <th style={{ padding: 6 }}>연도</th>
-                  <th style={{ padding: 6 }}>모드</th>
-                  <th style={{ padding: 6 }}>크기/문제</th>
-                  <th style={{ padding: 6 }}>비고</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((h, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #eee' }}>
-                    <td style={{ padding: 6, color: '#666', whiteSpace: 'nowrap' }}>{formatTime(h.ts)}</td>
-                    <td style={{ padding: 6 }}>
-                      {h.type === 'upload' && <span style={{ color: '#06b' }}>📄 업로드</span>}
-                      {h.type === 'upload-failed' && <span style={{ color: '#c00' }}>❌ 업로드 실패</span>}
-                      {h.type === 'convert' && <span style={{ color: '#080' }}>▶ 변환</span>}
-                    </td>
-                    <td style={{ padding: 6, wordBreak: 'break-all' }}>{h.name || h.sourceName || '-'}</td>
-                    <td style={{ padding: 6 }}>{h.year || '-'}</td>
-                    <td style={{ padding: 6 }}>{h.mode || '-'}</td>
-                    <td style={{ padding: 6 }}>
-                      {h.size ? formatBytes(h.size) : ''}
-                      {h.questionCount != null ? `${h.questionCount}문제` : ''}
-                    </td>
-                    <td style={{ padding: 6, color: '#666' }}>
-                      {h.error && <span style={{ color: '#c00' }}>{h.error}</span>}
-                      {h.chars != null && `${h.chars.toLocaleString()}자 추출`}
-                      {h.elapsedMs != null && ` (${(h.elapsedMs / 1000).toFixed(1)}s)`}
-                      {h.errorCount > 0 && <span style={{ color: '#c80' }}> 경고 {h.errorCount}건</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
+          ))}
+        </div>
       )}
     </div>
   );

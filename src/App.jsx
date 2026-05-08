@@ -198,7 +198,7 @@ export default function App() {
             letterSpacing: '-0.02em',
             lineHeight: 1.2
           }}>
-            정보시스템감리사
+            기출문제 학습
           </h1>
           <div style={{ 
             fontSize: '14px',
@@ -556,51 +556,48 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
           )}
         </div>
         
-        {/* 문제 본문 */}
-        <div style={{
-          fontSize: '15px',
-          lineHeight: 1.75,
-          color: '#1a1a1a',
-          whiteSpace: 'pre-wrap',
-          marginBottom: '24px',
-          fontFamily: '"Gowun Batang", "Noto Serif KR", serif',
-          fontWeight: 400
-        }}>
-          {question.question}
-        </div>
-        
-        {/* 보기 */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {question.options.map((opt, idx) => {
+        {/* 문제 이미지 */}
+        {question.image && (
+          <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+            <img
+              src={question.image}
+              alt={`문제 ${question.id}`}
+              style={{
+                maxWidth: '100%',
+                height: 'auto',
+                border: '1px solid #d4c9b5',
+                background: '#fff',
+              }}
+            />
+          </div>
+        )}
+
+        {/* 1~4 정답 버튼 */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+          {[0, 1, 2, 3].map((idx) => {
             const isSelected = selectedOption === idx;
             const isCorrect = (idx + 1) === question.answer;
             const isWrong = showAnswer && isSelected && !isCorrect;
             const showAsCorrect = showAnswer && isCorrect;
-            
+
             let bgColor = '#fff';
             let borderColor = '#d4c9b5';
             let textColor = '#1a1a1a';
-            let numberBg = '#f5f1ea';
-            let numberColor = '#1a1a1a';
-            
+
             if (showAsCorrect) {
               bgColor = '#e8f0e8';
               borderColor = '#3d6a5e';
-              numberBg = '#3d6a5e';
-              numberColor = '#fff';
+              textColor = '#3d6a5e';
             } else if (isWrong) {
               bgColor = '#f5e6e6';
               borderColor = '#a05a3c';
-              numberBg = '#a05a3c';
-              numberColor = '#fff';
+              textColor = '#a05a3c';
             } else if (isSelected) {
               bgColor = '#1a1a1a';
               borderColor = '#1a1a1a';
               textColor = '#f5f1ea';
-              numberBg = '#f5f1ea';
-              numberColor = '#1a1a1a';
             }
-            
+
             return (
               <button
                 key={idx}
@@ -608,38 +605,20 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
                 disabled={showAnswer}
                 className="slide-in"
                 style={{
-                  display: 'flex',
-                  gap: '12px',
-                  padding: '14px 16px',
+                  padding: '24px 0',
                   background: bgColor,
-                  border: `1.5px solid ${borderColor}`,
+                  border: `2px solid ${borderColor}`,
                   color: textColor,
                   cursor: showAnswer ? 'default' : 'pointer',
-                  textAlign: 'left',
-                  fontSize: '14px',
-                  lineHeight: 1.55,
-                  fontFamily: 'inherit',
-                  width: '100%',
+                  fontSize: '24px',
+                  fontWeight: 700,
+                  fontFamily: '"JetBrains Mono", monospace',
                   transition: 'all 0.2s',
-                  animationDelay: `${idx * 60}ms`
+                  animationDelay: `${idx * 60}ms`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}
               >
-                <div style={{
-                  flexShrink: 0,
-                  width: '24px',
-                  height: '24px',
-                  background: numberBg,
-                  color: numberColor,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '12px',
-                  fontWeight: 700,
-                  fontFamily: '"JetBrains Mono", monospace'
-                }}>
-                  {showAsCorrect ? <Check size={14} strokeWidth={3} /> : (isWrong ? <X size={14} strokeWidth={3} /> : (idx + 1))}
-                </div>
-                <div style={{ flex: 1, paddingTop: '2px' }}>{opt}</div>
+                {showAsCorrect ? <Check size={26} strokeWidth={3} /> : (isWrong ? <X size={26} strokeWidth={3} /> : (idx + 1))}
               </button>
             );
           })}
@@ -669,10 +648,39 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
                 <> · 정답은 <strong>{question.answer}번</strong>입니다.</>
               )}
               <div style={{ fontSize: '12px', color: '#7a6f5f', marginTop: '4px' }}>
-                {selectedOption + 1 === question.answer 
-                  ? '잘하셨어요! 다음 문제로 넘어가세요.' 
+                {selectedOption + 1 === question.answer
+                  ? '잘하셨어요! 다음 문제로 넘어가세요.'
                   : '틀린 문제는 자동으로 저장되어 다시 풀어볼 수 있어요.'}
               </div>
+              {(question.explanation || question.explanationImage) && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '10px 12px',
+                  background: 'rgba(255,255,255,0.6)',
+                  borderLeft: '3px solid #1a1a1a',
+                  fontSize: '13px',
+                  lineHeight: 1.7,
+                  color: '#1a1a1a',
+                  whiteSpace: 'pre-wrap'
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: '4px', fontSize: '12px', letterSpacing: '0.05em' }}>해설</div>
+                  {question.explanation && <div>{question.explanation}</div>}
+                  {question.explanationImage && (
+                    <img
+                      src={question.explanationImage}
+                      alt="해설 이미지"
+                      style={{
+                        marginTop: question.explanation ? '8px' : 0,
+                        maxWidth: '100%',
+                        height: 'auto',
+                        border: '1px solid #d4c9b5',
+                        background: '#fff',
+                        display: 'block',
+                      }}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -834,8 +842,11 @@ function StatsScreen({ stats, bookmarks, toggleBookmark, goHome }) {
                 #{String(q.id).padStart(3, '0')}
               </div>
               <div style={{ flex: 1, fontSize: '13px', lineHeight: 1.5 }}>
-                <div style={{ fontSize: '11px', color: '#7a6f5f', marginBottom: '2px' }}>{q.subject}</div>
-                {q.question.split('\n')[0].slice(0, 80)}...
+                <div style={{ fontSize: '11px', color: '#7a6f5f', marginBottom: '4px' }}>{q.subject}</div>
+                {q.image && (
+                  <img src={q.image} alt={`Q${q.id}`}
+                    style={{ maxWidth: '100%', maxHeight: 80, objectFit: 'contain', background: '#fff', border: '1px solid #d4c9b5' }} />
+                )}
               </div>
               <button 
                 onClick={() => toggleBookmark(q.id)}
