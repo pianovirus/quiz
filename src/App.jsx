@@ -449,7 +449,69 @@ function ActionButton({ onClick, icon, title, subtitle, primary, disabled }) {
 }
 
 // ============ 퀴즈 화면 ============
+function ImageLightbox({ src, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.92)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflow: 'auto', padding: '40px 12px',
+        animation: 'fadeIn 0.15s',
+      }}
+    >
+      <button
+        onClick={onClose}
+        aria-label="닫기"
+        style={{
+          position: 'fixed', top: 12, right: 12, zIndex: 10001,
+          background: 'rgba(255,255,255,0.15)', color: '#fff',
+          border: 'none', borderRadius: '50%', width: 44, height: 44,
+          fontSize: 22, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+        }}
+      >
+        ✕
+      </button>
+      <img
+        src={src}
+        alt="확대"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          maxWidth: '100%',
+          height: 'auto',
+          background: '#fff',
+          borderRadius: 4,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          display: 'block',
+        }}
+      />
+      <div style={{
+        position: 'fixed', bottom: 12, left: 0, right: 0,
+        textAlign: 'center', color: 'rgba(255,255,255,0.6)',
+        fontSize: 12, pointerEvents: 'none',
+      }}>
+        탭하거나 ✕ 눌러 닫기 · 두 손가락으로 핀치 줌
+      </div>
+    </div>
+  );
+}
+
 function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQuestion, isBookmarked, toggleBookmark, history, goHome, poolSize, mode }) {
+  const [zoomSrc, setZoomSrc] = useState(null);
+
   const subjectColor = {
     [SUBJECTS.AUDIT]: '#8b5e3c',
     [SUBJECTS.SE]: '#3d6a5e',
@@ -558,17 +620,28 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
         
         {/* 문제 이미지 */}
         {question.image && (
-          <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+          <div style={{ marginBottom: '24px', textAlign: 'center', position: 'relative' }}>
             <img
               src={question.image}
               alt={`문제 ${question.id}`}
+              onClick={() => setZoomSrc(question.image)}
               style={{
                 maxWidth: '100%',
                 height: 'auto',
                 border: '1px solid #d4c9b5',
                 background: '#fff',
+                cursor: 'zoom-in',
               }}
             />
+            <div style={{
+              position: 'absolute', top: 6, right: 6,
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              padding: '3px 8px', borderRadius: 12,
+              fontSize: 11, pointerEvents: 'none',
+              fontFamily: 'sans-serif',
+            }}>
+              🔍 탭하여 확대
+            </div>
           </div>
         )}
 
@@ -669,6 +742,7 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
                     <img
                       src={question.explanationImage}
                       alt="해설 이미지"
+                      onClick={() => setZoomSrc(question.explanationImage)}
                       style={{
                         marginTop: question.explanation ? '8px' : 0,
                         maxWidth: '100%',
@@ -676,6 +750,7 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
                         border: '1px solid #d4c9b5',
                         background: '#fff',
                         display: 'block',
+                        cursor: 'zoom-in',
                       }}
                     />
                   )}
@@ -710,6 +785,8 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
           다음 문제 <ChevronRight size={18} />
         </button>
       )}
+
+      {zoomSrc && <ImageLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />}
     </div>
   );
 }

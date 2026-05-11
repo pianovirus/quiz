@@ -48,7 +48,8 @@ export default [
     id: 8,
     subject: "감리 및 사업관리",
     image: "/q-images/2026/Q8.png",
-    answer: 2
+    answer: 2,
+    explanation: '📋 상세 해설\n②번이 틀린 이유 (정답):\n\n지문 내용: "데이터는 엑셀, XML, JSON과 같은 구조화된 형태의 오픈포맷으로 등록·개방하는 것이 원칙이다."\n\n사실 관계: 지침에서 정의하는 \'오픈포맷(Open Format)\'의 기준에 \'엑셀(.xls, .xlsx)\'은 원칙적으로 포함되지 않습니다.\n\n이유: 엑셀은 특정 소프트웨어(MS Office)에 종속된 포맷이기 때문입니다. 공공데이터 개방의 원칙은 특정 제조사에 종속되지 않는 CSV, XML, JSON, RDF 등입니다. 엑셀 파일은 \'기계 판독이 가능한 형태\'이긴 하지만, 엄격한 의미의 \'오픈포맷\' 원칙에는 부합하지 않는 것으로 간주하여 오답으로 처리되는 경우가 많습니다.\n\n🔍 나머지 선택지 재검토 (모두 옳은 설명)\n① 오픈API 활용 보장: 지침 제23조 등에 따라 기술문서 제공 및 민간의 자유로운 활용(수집, 저장 포함)을 보장해야 한다는 문구가 명시되어 있습니다.\n\n③ BRM 단위과제 기준: 공공데이터 목록 등록 시 행정 효율과 관리 편의를 위해 \'단위과제\' 수준에서 목록을 생성하고 등록하는 것이 지침상의 표준 절차입니다. (지침 제10조 관련 별표 참고)\n\n④ 비정형데이터 활용: 인공지능 학습을 위해 비정형데이터를 활용 가능한 형태(어노테이션 등 포함)로 개방하는 것은 최신 관리지침의 핵심 권고 사항입니다.'
   },
   {
     id: 9,
@@ -61,7 +62,8 @@ export default [
     id: 10,
     subject: "감리 및 사업관리",
     image: "/q-images/2026/Q10.png",
-    answer: 3
+    answer: 3,
+    explanation: '가이드의 주요 검토 항목에는 다음 내용이 포함됩니다.\n\n① 기관 내·외부 시스템 중복 여부 및 통합·연계 검토→ 가이드의 “사업 타당성 > 중복성” 항목 내용과 일치\n② 적용 기술의 실용화 사례 조사·분석→ “실현 가능성 > 기술 적정성” 항목에 실제 존재\n④ 유관기관 간 역할 및 협조체계 기술→ “실현 가능성 > 사업추진 여건” 항목\n\n등은 실제 가이드에 명시되어 있습니다.\n\n1. ISP (Information Strategy Planning) :정보화전략계획\n“기관 전체의 정보화 방향을 중장기적으로 설계하는 것”\n\n2. ISMP (Information System Master Plan) : 정보시스템 마스터플랜\n“특정 시스템 구축사업을 실제 발주 가능한 수준으로 상세 기획”'
   },
   {
     id: 11,
@@ -385,5 +387,59 @@ export default [
     subject: "데이터베이스",
     image: "/q-images/2026/Q63.png",
     answer: 2
+  },
+  {
+    id: 64,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q64.png",
+    answer: 3
+  },
+  {
+    id: 65,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q65.png",
+    answer: 4
+  },
+  {
+    id: 66,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q66.png",
+    answer: 4
+  },
+  {
+    id: 67,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q67.png",
+    answer: 1
+  },
+  {
+    id: 68,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q68.png",
+    answer: 1
+  },
+  {
+    id: 69,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q69.png",
+    answer: 4
+  },
+  {
+    id: 70,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q70.png",
+    answer: 3
+  },
+  {
+    id: 71,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q71.png",
+    answer: 2
+  },
+  {
+    id: 72,
+    subject: "데이터베이스",
+    image: "/q-images/2026/Q72.png",
+    answer: 4
   }
 ];
