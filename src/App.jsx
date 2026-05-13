@@ -475,12 +475,16 @@ function ImageLightbox({ src, onClose }) {
         onClick={onClose}
         aria-label="닫기"
         style={{
-          position: 'fixed', top: 12, right: 12, zIndex: 10001,
-          background: 'rgba(255,255,255,0.15)', color: '#fff',
-          border: 'none', borderRadius: '50%', width: 44, height: 44,
-          fontSize: 22, cursor: 'pointer',
+          position: 'fixed',
+          top: 'calc(env(safe-area-inset-top, 0px) + 60px)',
+          right: 16, zIndex: 10001,
+          background: 'rgba(255,255,255,0.2)', color: '#fff',
+          border: '1px solid rgba(255,255,255,0.3)', borderRadius: '50%',
+          width: 52, height: 52,
+          fontSize: 24, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
         }}
       >
         ✕
@@ -620,7 +624,13 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
         
         {/* 문제 이미지 */}
         {question.image && (
-          <div style={{ marginBottom: '24px', textAlign: 'center', position: 'relative' }}>
+          <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+            <div style={{
+              fontSize: 11, color: '#7a6f5f', marginBottom: 4,
+              fontFamily: 'sans-serif', letterSpacing: '0.03em',
+            }}>
+              🔍 이미지를 탭하면 확대됩니다
+            </div>
             <img
               src={question.image}
               alt={`문제 ${question.id}`}
@@ -633,15 +643,6 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
                 cursor: 'zoom-in',
               }}
             />
-            <div style={{
-              position: 'absolute', top: 6, right: 6,
-              background: 'rgba(0,0,0,0.6)', color: '#fff',
-              padding: '3px 8px', borderRadius: 12,
-              fontSize: 11, pointerEvents: 'none',
-              fontFamily: 'sans-serif',
-            }}>
-              🔍 탭하여 확대
-            </div>
           </div>
         )}
 
