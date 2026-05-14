@@ -68,6 +68,9 @@ export default function Converter() {
   const explAreaRef = useRef(null);
   const explTextRef = useRef(null);
 
+  // 과목 필터 (목록 영역)
+  const [subjectFilter, setSubjectFilter] = useState('전체');
+
   // 연도 변경 시 localStorage에 저장
   useEffect(() => {
     if (year) localStorage.setItem(LAST_YEAR_KEY, year);
@@ -497,10 +500,45 @@ export default function Converter() {
           아직 저장된 문제가 없습니다. 저장된 연도를 불러오거나 새로 입력하세요.
         </div>
       ) : (
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10, marginTop: 10
-        }}>
-          {[...questions].sort((a,b) => a.id - b.id).map(q => (
+        <>
+          {/* 과목별 탭 */}
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 10, marginBottom: 8 }}>
+            {(() => {
+              const counts = { '전체': questions.length };
+              for (const s of SUBJECTS) counts[s] = 0;
+              for (const q of questions) {
+                counts[q.subject] = (counts[q.subject] || 0) + 1;
+              }
+              const tabs = ['전체', ...SUBJECTS];
+              return tabs.map(s => {
+                const active = subjectFilter === s;
+                const n = counts[s] ?? 0;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSubjectFilter(s)}
+                    style={{
+                      padding: '6px 12px', fontSize: 13,
+                      border: '1px solid ' + (active ? '#1a1a1a' : '#ccc'),
+                      background: active ? '#1a1a1a' : '#fff',
+                      color: active ? '#fff' : (n === 0 ? '#bbb' : '#333'),
+                      borderRadius: 4, cursor: 'pointer',
+                      fontWeight: active ? 'bold' : 'normal',
+                    }}
+                  >
+                    {s} <span style={{ opacity: 0.7, fontSize: 11 }}>({n})</span>
+                  </button>
+                );
+              });
+            })()}
+          </div>
+
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10
+          }}>
+          {[...questions]
+            .filter(q => subjectFilter === '전체' || q.subject === subjectFilter)
+            .sort((a,b) => a.id - b.id).map(q => (
             <div key={q.id} style={{
               border: '1px solid #ddd', borderRadius: 4, padding: 6, background: '#fff'
             }}>
@@ -531,7 +569,8 @@ export default function Converter() {
               )}
             </div>
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

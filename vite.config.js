@@ -121,7 +121,7 @@ function adminEndpoints() {
 export default defineConfig({
   plugins: [react(), adminEndpoints()],
   server: {
-    port: 5173,
+    port: 7700,
     open: true,
   },
 })
