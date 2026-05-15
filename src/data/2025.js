@@ -465,151 +465,151 @@ export default [
   },
   {
     id: 76,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q76.png",
     answer: 3
   },
   {
     id: 77,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q77.png",
     answer: 3
   },
   {
     id: 78,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q78.png",
     answer: 3
   },
   {
     id: 79,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q79.png",
     answer: 1
   },
   {
     id: 80,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q80.png",
     answer: 4
   },
   {
     id: 81,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q81.png",
     answer: 2
   },
   {
     id: 82,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q82.png",
     answer: 3
   },
   {
     id: 83,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q83.png",
     answer: 3
   },
   {
     id: 84,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q84.png",
     answer: 4
   },
   {
     id: 85,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q85.png",
     answer: 4
   },
   {
     id: 86,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q86.png",
     answer: 4
   },
   {
     id: 87,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q87.png",
     answer: 1
   },
   {
     id: 88,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q88.png",
     answer: 2
   },
   {
     id: 89,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q89.png",
     answer: 3
   },
   {
     id: 90,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q90.png",
     answer: 1
   },
   {
     id: 91,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q91.png",
     answer: 2
   },
   {
     id: 92,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q92.png",
     answer: 1
   },
   {
     id: 93,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q93.png",
     answer: 2
   },
   {
     id: 94,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q94.png",
     answer: 2
   },
   {
     id: 95,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q95.png",
     answer: 3
   },
   {
     id: 96,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q96.png",
     answer: 1
   },
   {
     id: 97,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q97.png",
     answer: 4
   },
   {
     id: 98,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q98.png",
     answer: 1
   },
   {
     id: 99,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q99.png",
     answer: 4
   },
   {
     id: 100,
-    subject: "데이터베이스",
+    subject: "시스템 구조",
     image: "/q-images/2025/Q100.png",
     answer: 4
   },
@@ -660,5 +660,66 @@ export default [
     subject: "보안",
     image: "/q-images/2025/Q108.png",
     answer: 4
+  },
+  {
+    id: 109,
+    subject: "감리 및 사업관리",
+    image: "/q-images/2025/Q109.png",
+    answer: 1
+  },
+  {
+    id: 110,
+    subject: "감리 및 사업관리",
+    image: "/q-images/2025/Q110.png",
+    answer: 2
+  },
+  {
+    id: 111,
+    subject: "보안",
+    image: "/q-images/2025/Q111.png",
+    answer: 2
+  },
+  {
+    id: 112,
+    subject: "보안",
+    image: "/q-images/2025/Q112.png",
+    answer: 3
+  },
+  {
+    id: 113,
+    subject: "보안",
+    image: "/q-images/2025/Q113.png",
+    answer: 4
+  },
+  {
+    id: 114,
+    subject: "보안",
+    image: "/q-images/2025/Q114.png",
+    answer: 3
+  },
+  {
+    id: 115,
+    subject: "보안",
+    image: "/q-images/2025/Q115.png",
+    answer: 4
+  },
+  {
+    id: 116,
+    subject: "보안",
+    image: "/q-images/2025/Q116.png",
+    answer: 1,
+    explanation: '전부가 다 답인 케이스 -_-'
+  },
+  {
+    id: 117,
+    subject: "보안",
+    image: "/q-images/2025/Q117.png",
+    answer: 2
+  },
+  {
+    id: 118,
+    subject: "보안",
+    image: "/q-images/2025/Q118.png",
+    answer: 2
   }
 ];
