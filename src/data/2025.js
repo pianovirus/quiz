@@ -692,6 +692,12 @@ export default [
     answer: 4
   },
   {
+    id: 114,
+    subject: "보안",
+    image: "/q-images/2025/Q114.png",
+    answer: 3
+  },
+  {
     id: 115,
     subject: "보안",
     image: "/q-images/2025/Q115.png",
@@ -715,5 +721,17 @@ export default [
     subject: "보안",
     image: "/q-images/2025/Q118.png",
     answer: 2
+  },
+  {
+    id: 119,
+    subject: "보안",
+    image: "/q-images/2025/Q119.png",
+    answer: 4
+  },
+  {
+    id: 120,
+    subject: "보안",
+    image: "/q-images/2025/Q120.png",
+    answer: 4
   }
 ];
