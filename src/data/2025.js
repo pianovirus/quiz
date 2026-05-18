@@ -164,7 +164,8 @@ export default [
     id: 26,
     subject: "소프트웨어 공학",
     image: "/q-images/2025/Q26.png",
-    answer: 3
+    answer: 3,
+    explanationImage: "/q-images/2025/Q26-expl.png"
   },
   {
     id: 27,
@@ -438,7 +439,8 @@ export default [
     id: 71,
     subject: "데이터베이스",
     image: "/q-images/2025/Q71.png",
-    answer: 2
+    answer: 2,
+    explanationImage: "/q-images/2025/Q71-expl.png"
   },
   {
     id: 72,

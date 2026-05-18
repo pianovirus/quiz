@@ -373,7 +373,7 @@ function HomeScreen({ stats, selectedSubjects, toggleSubject, wrongCount, bookma
                   opacity: 0.7,
                   fontFamily: '"JetBrains Mono", monospace'
                 }}>
-                  {subjStat.attempted > 0 ? `${subjStat.accuracy}%` : `${subjStat.total}문항`}
+                  {subjStat.total}문항
                 </div>
               </button>
             );
