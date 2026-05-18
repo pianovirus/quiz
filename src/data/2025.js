@@ -157,7 +157,8 @@ export default [
     id: 25,
     subject: "감리 및 사업관리",
     image: "/q-images/2025/Q25.png",
-    answer: 2
+    answer: 2,
+    explanation: '프로젝트 관리(PMI PMBOK 기준)에서 의사소통 방법은 크게 전달식(Push), 유인식(Pull), 대화식(Interactive) 세 가지 유형으로 분류됩니다.\n\n1. 의사소통 방법의 3가지 유형\n유인식 의사소통 (Pull Communication):\n\n개념: 정보 수신자가 자신의 의지에 따라 정보가 저장된 저장소에 접근하여 정보를 가져오는(Pull) 방식입니다. 주로 대용량의 정보나 대규모 청중에게 정보를 제공할 때 사용됩니다.\n\n예시: 인트라넷(Intranet), 웹사이트, 온라인 저장소(공유 드라이브), 지식 관리 리포지토리 등\n\n전달식 의사소통 (Push Communication):\n\n개념: 정보를 필요로 하는 특정 수신자에게 송신자가 직접 정보를 보내는(Push) 방식입니다. 정보가 도달했는지는 확인되지만, 수신자가 이를 이해했는지는 보장하지 않습니다.\n\n예시: 이메일, 상태 보고서, 편지, 팩스, 보도 자료 등\n\n대화식 의사소통 (Interactive Communication):\n\n개념: 두 명 이상의 당사자 간에 다방향으로 실시간 정보 교환이 이루어지는 방식입니다. 가장 효율적인 의사소통 방식입니다.\n\n예시: 회의, 전화 통화, 화상 회의 등'
   },
   {
     id: 26,
@@ -479,7 +480,9 @@ export default [
     id: 78,
     subject: "시스템 구조",
     image: "/q-images/2025/Q78.png",
-    answer: 3
+    answer: 3,
+    explanation: '부동소수점(Floating Point) 덧셈 과정은 일반적으로 다음 순서로 진행됩니다.\n\n지수 조정(Exponent Alignment)\n→ 두 수의 지수를 맞춰야 함\n→ 작은 지수의 가수를 이동시켜 지수를 동일하게 맞춤\n(② 필요)\n가수 덧셈(Mantissa Addition)\n→ 지수를 맞춘 뒤 가리수(가수)를 더함\n(④ 필요)\n정규화(Normalization)\n→ 연산 결과가 규격에서 벗어나면 가수와 지수를 조정\n예: 0.011 × 2⁵ → 1.1 × 2³ 형태로 변환\n(① 필요)\n\n그런데 지수끼리 직접 더하는 연산은 하지 않습니다.',
+    explanationImage: "/q-images/2025/Q78-expl.png"
   },
   {
     id: 79,
