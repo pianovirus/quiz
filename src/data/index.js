@@ -18,6 +18,7 @@ for (const path of Object.keys(modules).sort()) {
   const prefixed = list.map(q => ({
     ...q,
     year,
+    originalId: q.id,
     id: `${year}-${q.id}`,
   }));
   QUESTIONS_BY_YEAR[year] = prefixed;

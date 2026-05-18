@@ -2,11 +2,30 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR = path.resolve(__dirname, 'src/data')
 const IMG_ROOT = path.resolve(__dirname, 'public/q-images')
+
+function escapeJsString(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
+}
+
+function toJsModule(year, questions) {
+  const sorted = [...questions].sort((a, b) => a.id - b.id)
+  const body = sorted.map(q => {
+    const expl = q.explanation ? `,\n    explanation: '${escapeJsString(q.explanation)}'` : ''
+    const explImg = q.explanationImage ? `,\n    explanationImage: "${q.explanationImage}"` : ''
+    return `  {
+    id: ${q.id},
+    subject: "${q.subject}",
+    image: "${q.image}",
+    answer: ${q.answer ?? 'null'}${expl}${explImg}
+  }`
+  }).join(',\n')
+  return `// ${year}년 기출문제\nexport default [\n${body}\n];\n`
+}
 
 function adminEndpoints() {
   const isYear = (s) => /^\d{4}$/.test(s)
@@ -91,6 +110,38 @@ function adminEndpoints() {
             url: `/q-images/${year}/${baseName}.${ext}`,
             bytes: buf.length,
           })
+        } catch (err) { json(res, 500, { error: err.message }) }
+      })
+
+      // 단일 문제 부분 업데이트 (퀴즈 화면에서 빠른 해설 편집용)
+      server.middlewares.use('/__update-question', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        try {
+          const { year, id, patch } = JSON.parse(await readBody(req))
+          if (!isYear(year)) return json(res, 400, { error: 'invalid year' })
+          if (!Number.isInteger(id)) return json(res, 400, { error: 'invalid id' })
+          if (!patch || typeof patch !== 'object') return json(res, 400, { error: 'patch must be object' })
+
+          const target = path.join(DATA_DIR, `${year}.js`)
+          if (!fs.existsSync(target)) return json(res, 404, { error: 'year file not found' })
+
+          // 캐시 무효화를 위해 timestamp 쿼리 추가
+          const fileUrl = pathToFileURL(target).href + '?t=' + Date.now()
+          const mod = await import(fileUrl)
+          const list = Array.isArray(mod.default) ? [...mod.default] : []
+          const idx = list.findIndex(q => q.id === id)
+          if (idx < 0) return json(res, 404, { error: 'question not found' })
+
+          const updated = { ...list[idx] }
+          for (const k of Object.keys(patch)) {
+            const v = patch[k]
+            if (v === null || v === '' || v === undefined) delete updated[k]
+            else updated[k] = v
+          }
+          list[idx] = updated
+
+          fs.writeFileSync(target, toJsModule(year, list), 'utf8')
+          json(res, 200, { ok: true, updated })
         } catch (err) { json(res, 500, { error: err.message }) }
       })
 

@@ -513,8 +513,138 @@ function ImageLightbox({ src, onClose }) {
   );
 }
 
+const IS_DEV = import.meta.env.DEV;
+
+function QuickExplanationEditor({ question, onClose, onSaved }) {
+  const [text, setText] = useState(question.explanation || '');
+  const [imgPreview, setImgPreview] = useState(question.explanationImage || '');
+  const [imgDirty, setImgDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState('');
+
+  const onPaste = async (e) => {
+    const items = e.clipboardData?.items;
+    for (const it of items || []) {
+      if (it.type?.startsWith('image/')) {
+        const file = it.getAsFile();
+        const r = new FileReader();
+        r.onload = () => { setImgPreview(r.result); setImgDirty(true); setStatus('이미지 붙여넣음'); };
+        r.readAsDataURL(file);
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  const save = async () => {
+    setSaving(true); setStatus('저장 중...');
+    try {
+      const year = question.year;
+      const numericId = question.originalId;
+      let explImgUrl = imgPreview;
+      if (imgDirty && imgPreview) {
+        const r = await fetch('/__save-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, id: numericId, dataUrl: imgPreview, kind: 'explanation' }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'image save failed');
+        explImgUrl = d.url;
+      } else if (!imgPreview && question.explanationImage) {
+        await fetch('/__delete-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, id: numericId, kind: 'explanation' }),
+        });
+        explImgUrl = '';
+      }
+      const patch = {
+        explanation: text.trim() || null,
+        explanationImage: explImgUrl || null,
+      };
+      const r2 = await fetch('/__update-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, id: numericId, patch }),
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) throw new Error(d2.error || 'update failed');
+
+      question.explanation = text.trim() || undefined;
+      question.explanationImage = explImgUrl || undefined;
+      onSaved();
+    } catch (err) {
+      setStatus('실패: ' + err.message);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 10000,
+      background: 'rgba(0,0,0,0.6)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', padding: 12,
+    }}>
+      <div onClick={e => e.stopPropagation()} onPaste={onPaste} style={{
+        background: '#fff', borderRadius: 8, padding: 16,
+        maxWidth: 720, width: '100%', maxHeight: '90vh', overflow: 'auto',
+        fontFamily: 'sans-serif',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h3 style={{ margin: 0 }}>#{question.originalId} 해설 편집 ({question.year})</h3>
+          <button onClick={onClose} style={{ fontSize: 18, border: 'none', background: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>텍스트 해설</div>
+        <textarea
+          value={text} onChange={e => setText(e.target.value)} autoFocus
+          placeholder="해설 입력 (이미지는 아래 박스에 Ctrl+V로 붙여넣기)"
+          style={{ width: '100%', minHeight: 140, padding: 8, fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+
+        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 12, color: '#666' }}>해설 이미지 (선택)</div>
+          {imgPreview && (
+            <button onClick={() => { setImgPreview(''); setImgDirty(true); }}
+              style={{ fontSize: 11, color: '#c00', background: 'none', border: '1px solid #c00', padding: '1px 6px', borderRadius: 3, cursor: 'pointer' }}>
+              이미지 제거
+            </button>
+          )}
+        </div>
+        <div style={{
+          marginTop: 4, border: '1px dashed #c8a96a', borderRadius: 4,
+          minHeight: imgPreview ? 'auto' : 70, padding: 8,
+          background: imgPreview ? '#fff' : '#fdf9f0',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          {imgPreview ? (
+            <img src={imgPreview} alt="해설" style={{ maxWidth: '100%', maxHeight: 300 }} />
+          ) : (
+            <div style={{ fontSize: 12, color: '#7a6f5f', textAlign: 'center' }}>
+              📎 이 영역 어디든 <b>Ctrl+V</b>로 해설 이미지 붙여넣기
+            </div>
+          )}
+        </div>
+
+        {status && <div style={{ marginTop: 8, fontSize: 12, color: status.includes('실패') ? '#c00' : '#080' }}>{status}</div>}
+
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={saving}
+            style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>취소</button>
+          <button onClick={save} disabled={saving}
+            style={{ padding: '8px 16px', fontSize: 13, background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: saving ? 'wait' : 'pointer', fontWeight: 'bold' }}>
+            💾 {saving ? '저장 중...' : '저장'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQuestion, isBookmarked, toggleBookmark, history, goHome, poolSize, mode }) {
   const [zoomSrc, setZoomSrc] = useState(null);
+  const [editingExpl, setEditingExpl] = useState(false);
+  const [tick, setTick] = useState(0); // 강제 리렌더용
 
   const subjectColor = {
     [SUBJECTS.AUDIT]: '#8b5e3c',
@@ -788,6 +918,31 @@ function QuizScreen({ question, selectedOption, showAnswer, selectAnswer, nextQu
       )}
 
       {zoomSrc && <ImageLightbox src={zoomSrc} onClose={() => setZoomSrc(null)} />}
+
+      {IS_DEV && (
+        <button
+          onClick={() => setEditingExpl(true)}
+          title="이 문제 해설 편집 (dev only)"
+          style={{
+            position: 'fixed', bottom: 16, right: 16, zIndex: 9998,
+            background: '#16a34a', color: '#fff', border: 'none',
+            borderRadius: '50%', width: 52, height: 52,
+            fontSize: 18, cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          ✎
+        </button>
+      )}
+
+      {editingExpl && (
+        <QuickExplanationEditor
+          question={question}
+          onClose={() => setEditingExpl(false)}
+          onSaved={() => { setEditingExpl(false); setTick(t => t + 1); }}
+        />
+      )}
     </div>
   );
 }

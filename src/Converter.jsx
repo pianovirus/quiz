@@ -314,17 +314,53 @@ export default function Converter() {
       </p>
 
       {/* 저장된 연도 목록 */}
-      <div style={{ marginBottom: 12, padding: 8, background: '#f0f4ff', borderRadius: 4, fontSize: 13 }}>
-        <b>저장된 연도:</b>{' '}
-        {savedFiles.length === 0 && <span style={{ color: '#888' }}>아직 없음</span>}
-        {savedFiles.map(f => (
-          <button key={f} onClick={() => loadYear(f)}
-            style={{ margin: '0 4px', padding: '2px 8px', cursor: 'pointer',
-              background: '#fff', border: '1px solid #aac', borderRadius: 3 }}>
-            📂 {f}
-          </button>
-        ))}
-        <button onClick={refreshFiles} style={{ marginLeft: 8, padding: '2px 6px', fontSize: 11 }}>↻</button>
+      <div style={{ marginBottom: 12, padding: 10, background: '#f0f4ff', borderRadius: 4, fontSize: 13 }}>
+        <div style={{ marginBottom: 6 }}>
+          <b>저장된 연도:</b>{' '}
+          {savedFiles.length === 0 && <span style={{ color: '#888' }}>아직 없음</span>}
+          {savedFiles.map(f => {
+            const yr = f.replace('.js', '');
+            const active = yr === year;
+            return (
+              <button key={f} onClick={() => loadYear(f)}
+                style={{
+                  margin: '0 4px', padding: '4px 10px', cursor: 'pointer',
+                  background: active ? '#1a1a1a' : '#fff',
+                  color: active ? '#fff' : '#333',
+                  border: '1px solid ' + (active ? '#1a1a1a' : '#aac'),
+                  borderRadius: 3, fontWeight: active ? 'bold' : 'normal',
+                }}>
+                📂 {f}
+              </button>
+            );
+          })}
+          <button onClick={refreshFiles} style={{ marginLeft: 4, padding: '4px 8px', fontSize: 11 }} title="목록 새로고침">↻</button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: '#555' }}>+ 새 연도 시작:</span>
+          {[2024, 2023, 2022, 2021, 2020].map(yr => {
+            const exists = savedFiles.includes(`${yr}.js`);
+            if (exists) return null;
+            return (
+              <button key={yr}
+                onClick={() => {
+                  if (questions.length > 0 && !confirm(`현재 ${year}년 작업을 두고 ${yr}년 새로 시작하시겠습니까? (저장된 내용은 그대로 남습니다)`)) return;
+                  setYear(String(yr));
+                  setQuestions([]);
+                  resetForm(1);
+                  setStatus(`${yr}년 새로 시작. 첫 문제부터 입력하세요.`);
+                }}
+                style={{
+                  padding: '3px 8px', cursor: 'pointer',
+                  background: '#fff', border: '1px dashed #888',
+                  borderRadius: 3, fontSize: 12,
+                }}>
+                ➕ {yr}
+              </button>
+            );
+          })}
+          <span style={{ fontSize: 11, color: '#888' }}>(또는 우측 폼 "연도" 입력칸에 직접 입력)</span>
+        </div>
       </div>
 
       {/* 입력 폼 */}
