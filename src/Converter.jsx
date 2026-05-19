@@ -363,6 +363,21 @@ export default function Converter() {
         </div>
       </div>
 
+      {/* 저장 대상 안내 배너 */}
+      <div style={{
+        marginBottom: 12, padding: '10px 14px',
+        background: savedFiles.includes(`${year}.js`) ? '#fef3c7' : '#dcfce7',
+        border: '1px solid ' + (savedFiles.includes(`${year}.js`) ? '#fbbf24' : '#16a34a'),
+        borderRadius: 4, fontSize: 14,
+      }}>
+        💾 <b>저장 대상: src/data/{year}.js</b>{' '}
+        {savedFiles.includes(`${year}.js`)
+          ? <span style={{ color: '#92400e' }}>(기존 파일 — 새 문제 추가됨)</span>
+          : <span style={{ color: '#166534' }}>(새 파일 — 첫 저장 시 생성됨)</span>}
+        {' · '}
+        <span style={{ color: '#555' }}>현재 메모리에 {questions.length}문제</span>
+      </div>
+
       {/* 입력 폼 */}
       <div ref={formRef} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
         {/* 좌: 이미지 */}
